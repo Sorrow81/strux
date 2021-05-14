@@ -1,0 +1,74 @@
+version: '3'
+
+services:
+
+  www:
+    image: bunkerity/bunkerized-nginx
+    restart: always
+    ports:
+      - 80:8080
+    volumes:
+      - autoconf:/etc/nginx
+    environment:
+      - SERVER_NAME=                                              # must be left blank if you don't want to setup "static" conf
+      - MULTISITE=yes
+      - DISABLE_DEFAULT_SERVER=yes
+      - USE_CLIENT_CACHE=yes
+      - USE_PROXY_CACHE=yes
+      - USE_GZIP=yes
+      - USE_REVERSE_PROXY=yes
+    labels:
+      - "bunkerized-nginx.AUTOCONF"
+
+  myautoconf:
+    image: bunkerity/bunkerized-nginx-autoconf
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - autoconf:/etc/nginx
+    depends_on:
+      - www
+      - api
+      - client
+
+  api:
+    image: strapi/strapi
+    environment:
+      DATABASE_CLIENT: postgres
+      DATABASE_NAME: strapi
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USERNAME: strapi
+      DATABASE_PASSWORD: strapi
+    volumes:
+      - ./api:/srv/app
+    labels:
+      - "bunkerized-nginx.SERVER_NAME=api.strux.local"            # replace with your domain
+      - "bunkerized-nginx.REVERSE_PROXY_URL=/"
+      - "bunkerized-nginx.REVERSE_PROXY_HOST=http://api:1337"
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres
+    environment:
+      POSTGRES_DB: strapi
+      POSTGRES_USER: strapi
+      POSTGRES_PASSWORD: strapi
+    volumes:
+      - ./postgres:/var/lib/postgresql/data
+      
+  client:
+    build: 
+        context: client
+        dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    labels:
+      - "bunkerized-nginx.SERVER_NAME=strux.local"            # replace with your domain
+      - "bunkerized-nginx.REVERSE_PROXY_URL=/"
+      - "bunkerized-nginx.REVERSE_PROXY_HOST=http://client:3000"
+    depends_on:
+      - api
+
+volumes:
+  autoconf:
